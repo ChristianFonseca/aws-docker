@@ -1,0 +1,12 @@
+numpy
+scipy
+pandas
+scikit-learn
+boto3
+xlrd
+pickle
+lightgbm==2.2.1
+shap
+joblib
+s3io
+datetime

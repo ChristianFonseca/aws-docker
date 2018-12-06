@@ -1,0 +1,11 @@
+Metadata-Version: 1.2
+Name: rimac-analytics
+Version: 0.5.0
+Summary: Rimac Analytics API
+Home-page: https://bitbucket.org/rimac-analytics/rimac-analytics-api
+Author: Diego y Ricardito
+Author-email: ddce.2005@gmail.com
+License: MIT
+Description: UNKNOWN
+Platform: UNKNOWN
+Requires-Python: >=3
