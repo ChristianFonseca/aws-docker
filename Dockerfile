@@ -8,7 +8,7 @@ RUN apt-get install -qy build-essential g++
 
 # Install python libraries
 RUN pip3 install --upgrade pip
-RUN pip3 install numpy scipy pandas scikit-learn boto3 xlrd pickle lightgbm==2.2.1 shap joblib s3io datetime
+RUN pip3 install numpy scipy pandas scikit-learn boto3 xlrd lightgbm==2.2.1 shap joblib s3io datetime
 
 COPY src /app
 WORKDIR /app
