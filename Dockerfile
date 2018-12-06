@@ -8,7 +8,7 @@ RUN apt-get install -qy build-essential g++
 
 # Install python libraries
 RUN pip3 install --upgrade pip
-RUN pip3 install ./requerimients.txt
+RUN pip3 install -r ./requerimients.txt
 
 COPY src /app
 WORKDIR /app
