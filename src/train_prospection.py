@@ -28,9 +28,11 @@ from sklearn.metrics import precision_score
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import mean_squared_error
 
-
 path_model = 'rimac-analytics-temporal/models/siniestralidad_veh/bases/final/'
 path_common = 'rimac-analytics-temporal/common/bases/static/'
+path_model_fuga = 'rimac-analytics-temporal/models/churn/bases/predict/'
+path_prospection = 'rimac-analytics-temporal/models/siniestralidad_veh/bases/final/prospecciones/'
+path_bases_trigger = 'rimac-analytics-temporal/models/siniestralidad_veh/bases/final/bases_triggers/'
 
 
 def impxgb(valores,variables):
@@ -329,11 +331,45 @@ def feature_engineering(_df):
     
     return _df
 
+def drop_duplicates_maximum_prob(df):
+    dfx = pd.DataFrame(columns=['PLACA','COUNT'])
+    dfx['PLACA'] = df['P_AUTO'].value_counts().index
+    dfx['COUNT'] = df['P_AUTO'].value_counts().values
+    
+    repeated_vars = dfx[dfx['COUNT']>1]['PLACA'].values
+    
+    df_fuga = df.copy()
+    df_fuga.drop_duplicates(subset='P_AUTO',inplace=True)
+    
+    for x in repeated_vars:
+        df_fuga.loc[df_fuga['P_AUTO']==x,'PROB'] = df[df['P_AUTO']==x]['PROB'].max()
+    
+    return df_fuga
 
+def get_timely_name():
+    date  = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m')
+    date_renov = datetime.datetime.strptime(date, "%Y%m") + relativedelta(months=2)
+    year = date_renov.strftime("%Y")
+    month = int(date_renov.strftime('%m')) - 1
+    month_dict = ['enero','febrero','marzo','abril',
+                  'mayo','junio','julio','agosto',
+                  'septiembre','octubre','noviembre','diciembre']
+    
+    return 'ren_' + month_dict[month] + year
 
-
-
-
+def get_actual_fuga_path():
+    date_now  = datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m')
+    for x in range(0,6):
+        date_fuga = datetime.datetime.strptime(date_now, "%Y%m") - relativedelta(months=x)
+        date_fuga = date_fuga.strftime("%Y%m")
+        try:
+            full_path_fuga = f'{path_model_fuga}{date_fuga}/blindaje_veh_{date_fuga}.csv'
+            fuga = raex.readCSV(full_path_fuga,s3=True, print_info=False)
+            break
+        except:
+            continue
+        
+    return full_path_fuga
 
 
 
@@ -358,10 +394,10 @@ def main(get_base_vehicular    = 'BASE_VEHICULAR_FINAL_2',
     output_name_training_base = f'training_base_{periodo_base}'
 
     print('Cargando Bases...',end='-')
-    df = raex.readCSV(path_model+f'{base_vehicular}.csv.gz',s3=True,print_info=True)
+    df = raex.readCSV(path_bases_trigger+f'{base_vehicular}.csv.gz',s3=True,print_info=True)
     df_veh = raex.readCSV(path_common+f'{parque_vehicular}.csv.gz',s3=True,print_info=True,
-                     usecols=['PLACA','MOTOR','MARCA_REVISADA','MODELO','CLASE','LONGITUD','ANCHO','ALTURA',
-                            'VALOR_AUTO_NUEVO','ANHO_FAB','COLOR1','PUERTAS','ASIENTOS'])
+                            usecols=['PLACA','MOTOR','MARCA_REVISADA','MODELO','CLASE','LONGITUD','ANCHO','ALTURA',
+                                    'VALOR_AUTO_NUEVO','ANHO_FAB','COLOR1','PUERTAS','ASIENTOS'])
     print('Terminado.')
 
     print('Limpiando base vehicular...',end=' ')
@@ -679,7 +715,7 @@ def main(get_base_vehicular    = 'BASE_VEHICULAR_FINAL_2',
     print('PROSPECCION')
     print('========================================================')
 
-    output_prospection_name = 'ren'
+    output_prospection_name = get_timely_name()
 
     # Modelo 1:
     d1 = read_data('s3',path_model+'models_1.pkl',pkl = True)
@@ -719,13 +755,14 @@ def main(get_base_vehicular    = 'BASE_VEHICULAR_FINAL_2',
     df['FLAG_RENOVACION']=0
     df.loc[df['NRO_SINIESTROS'].notnull(),'FLAG_RENOVACION']=1    
 
-    df = df[df['PERIODO']>=201706]
+    df = df[df['PERIODO']>=date_test3_2]
     df = pd.merge(df,df_ren,on=['CUC','PLACA'],how='left')
     df = df[df['ren_veh']==1]
 
     print('Desarrollando prospecciones...',end=' ')
     mylist = list(range(1,6))
     pros = df
+    pros.drop_duplicates(subset='PLACA',inplace=True)
     p=[]
     for k in mylist:
         pros['prob2_{}'.format(k)]=d2[k].predict(pros[cols], num_iteration=d2[k].best_iteration)
@@ -738,13 +775,21 @@ def main(get_base_vehicular    = 'BASE_VEHICULAR_FINAL_2',
         p.append('prob3_{}'.format(k))
     pros['prob3'] = pros[p].mean(axis=1)
 
+    # Agregar Fuga
+    fuga = raex.readCSV(get_actual_fuga_path(),s3=True)
+    fuga = drop_duplicates_maximum_prob(fuga)
+    pros = pd.merge(pros,fuga,left_on='PLACA',right_on='P_AUTO',how='left')
+
+    # Agregar PPR
     pros['PPR'] = pros['prob2']*pros['prob3']
     print('Terminado.')
 
+
+    
     # Guardar Prospeccion
     print('Guardando prospecciones...')
-    raex.toS3(pros[['PLACA','PPR']],path_model+f'{output_prospection_name}.csv',index=False)
-    print(f'Guardado en {path_model}{output_prospection_name}.csv')
+    raex.toS3(pros[['PLACA','PPR']],path_prospection+f'{output_prospection_name}.csv',index=False)
+    print(f'Guardado en {path_prospection}{output_prospection_name}.csv')
 
     print('\nPROCESO FINALIZADO')
 
